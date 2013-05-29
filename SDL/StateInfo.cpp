@@ -409,7 +409,7 @@ void SDL::Variable::write(DS::Stream* stream)
         stream->write<uint8_t>(0);
         stream->writeSafeString(m_data->m_notificationHint);
     }
-    
+
     if (isDefault())
         m_data->m_flags |= e_SameAsDefault;
     stream->write<uint8_t>(m_data->m_flags & 0xFF);
@@ -1018,12 +1018,12 @@ SDL::State SDL::State::Create(DS::Stream* stream)
     return state;
 }
 
-DS::Blob SDL::State::toBlob() const 
+DS::Blob SDL::State::toBlob() const
 {
     if (!m_data)
         return DS::Blob();
     DS::BufferStream buffer;
-    
+
     // Stream header (see ::Create)
     uint16_t hflags = 0x8000;
     if (!m_data->m_object.isNull())
@@ -1036,4 +1036,36 @@ DS::Blob SDL::State::toBlob() const
         m_data->m_object.write(&buffer);
     write(&buffer);
     return DS::Blob(buffer.buffer(), buffer.size());
+}
+
+void SDL::round_trip(const DS::Blob& buf, const SDL::State& sdl)
+{
+    // Really crazy SDL debugging...
+    DS::Blob roundtrip = sdl.toBlob();
+    bool match = true;
+    if (roundtrip.size() != buf.size())
+        match = false;
+    if (memcmp(roundtrip.buffer(), buf.buffer(), roundtrip.size()) != 0)
+        match = false;
+
+    if (!match) {
+        fprintf(stdout, "[SDL] ROUNDTRIP FAILED for %s\n\nCLIENT:",
+                sdl.descriptor()->m_name.c_str());
+        for (size_t i=0; i<buf.size(); ++i) {
+            if ((i % 16) == 0)
+                fputs("\n    ", stdout);
+            else if ((i % 16) == 8)
+                fputs("   ", stdout);
+            printf("%02X ", buf.buffer()[i]);
+        }
+        fputs("\n\nSERVER:", stdout);
+        for (size_t i=0; i<roundtrip.size(); ++i) {
+            if ((i % 16) == 0)
+                fputs("\n    ", stdout);
+            else if ((i % 16) == 8)
+                fputs("   ", stdout);
+            printf("%02X ", roundtrip.buffer()[i]);
+        }
+        fputc('\n', stdout);
+    }
 }

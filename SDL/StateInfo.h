@@ -236,6 +236,10 @@ namespace SDL
         StateDescriptor* descriptor() const { return m_data ? m_data->m_desc : 0; }
         _ref* data() const { return m_data; }
     };
+
+#ifdef DEBUG
+    void round_trip(const DS::Blob& buf, const SDL::State& sdl);
+#endif
 }
 
 #endif

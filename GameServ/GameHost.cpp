@@ -403,6 +403,7 @@ void dm_read_sdl(GameHost_Private* host, GameClient_Private* client,
         fputs("[SDL] Error parsing state\n", stderr);
         return;
     }
+    SDL::round_trip(state->m_sdlBlob, update);
 
 #if 0  // Enable for SDL debugging
     fprintf(stderr, "[SDL] Bcasting SDL %s for [%04X]%s\n",

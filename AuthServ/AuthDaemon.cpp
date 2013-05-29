@@ -21,6 +21,7 @@
 #include "settings.h"
 #include "errors.h"
 #include <chrono>
+#include "SDL/StateInfo.h"
 
 std::thread s_authDaemonThread;
 DS::MsgChannel s_authChannel;
@@ -1063,6 +1064,7 @@ void dm_authDaemon()
                 {
                     Auth_NodeInfo* info = reinterpret_cast<Auth_NodeInfo*>(msg.m_payload);
                     if (!info->m_revision.isNull() && info->m_node.m_NodeType == DS::Vault::e_NodeSDL) {
+                        SDL::round_trip(info->m_node.m_Blob_1, SDL::State::FromBlob(info->m_node.m_Blob_1));
                         // This is an SDL update. It needs to be passed off to the gameserver
                         PostgresStrings<1> parms;
                         parms.set(0, info->m_node.m_NodeIdx);
