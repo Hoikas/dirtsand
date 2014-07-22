@@ -43,7 +43,7 @@ void MOUL::KIMessage::write(DS::Stream* stream) const
     stream->write<int32_t>(m_value);
 }
 
-bool MOUL::KIMessage::makeSafeForNet()
+bool MOUL::KIMessage::makeSafeForNet(const ClientGuid& client)
 {
     if (m_command != e_ChatMessage) {
         // Client is being naughty

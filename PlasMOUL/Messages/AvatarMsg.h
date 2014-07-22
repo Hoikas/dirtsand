@@ -61,7 +61,7 @@ namespace MOUL
 
         virtual void read(DS::Stream* s);
         virtual void write(DS::Stream* s) const;
-        virtual bool makeSafeForNet();
+        virtual bool makeSafeForNet(const ClientGuid& client);
 
     public:
         enum Command

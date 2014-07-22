@@ -45,10 +45,10 @@ void MOUL::MessageWithCallbacks::write(DS::Stream* stream) const
         MOUL::Factory::WriteCreatable(stream, callback);
 }
 
-bool MOUL::MessageWithCallbacks::makeSafeForNet()
+bool MOUL::MessageWithCallbacks::makeSafeForNet(const ClientGuid& client)
 {
     for (Message* callback : m_callbacks) {
-        if (!callback->makeSafeForNet())
+        if (!callback->makeSafeForNet(client))
             return false;
     }
     return true;

@@ -71,7 +71,7 @@ void MOUL::AvCoopMsg::write(DS::Stream* s) const
     s->write<uint16_t>(m_command);
 }
 
-bool MOUL::AvCoopMsg::makeSafeForNet()
+bool MOUL::AvCoopMsg::makeSafeForNet(const ClientGuid& client)
 {
     if (m_coordinator) {
         if (m_coordinator->m_acceptMsg) {

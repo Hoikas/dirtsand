@@ -623,7 +623,7 @@ void dm_load_clone(GameHost_Private* host, GameClient_Private* client,
                    MOUL::NetMsgLoadClone* netmsg)
 {
     MOUL::LoadCloneMsg* msg = netmsg->m_message->Cast<MOUL::LoadCloneMsg>();
-    if (msg->makeSafeForNet()) {
+    if (msg->makeSafeForNet(client->m_clientInfo)) {
         if (netmsg->m_isPlayer) {
             host->m_clientMutex.lock();
             client->m_clientKey = netmsg->m_object;
@@ -712,7 +712,7 @@ void dm_game_message(GameHost_Private* host, Game_PropagateMessage* msg)
                         dm_broadcast(host, netmsg, msg->m_client->m_clientInfo.m_PlayerId);
                     else
                         dm_propagate(host, netmsg, msg->m_client->m_clientInfo.m_PlayerId);
-                } else if (gameMsg->m_message->makeSafeForNet())
+                } else if (gameMsg->m_message->makeSafeForNet(msg->m_client->m_clientInfo))
                     dm_propagate(host, netmsg, msg->m_client->m_clientInfo.m_PlayerId);
             }
             break;
@@ -721,7 +721,7 @@ void dm_game_message(GameHost_Private* host, Game_PropagateMessage* msg)
                 MOUL::NetMsgGameMessageDirected* directedMsg =
                         netmsg->Cast<MOUL::NetMsgGameMessageDirected>();
                 directedMsg->m_message->m_bcastFlags |= MOUL::Message::e_NetNonLocal;
-                if (msg->m_client->m_isAdmin || directedMsg->m_message->makeSafeForNet())
+                if (msg->m_client->m_isAdmin || directedMsg->m_message->makeSafeForNet(msg->m_client->m_clientInfo))
                     dm_propagate_to(host, netmsg, directedMsg->m_receivers);
             }
             break;

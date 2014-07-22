@@ -33,7 +33,7 @@ namespace MOUL
         virtual void read(DS::Stream* stream);
         virtual void write(DS::Stream* stream) const;
 
-        virtual bool makeSafeForNet() { return false; }
+        virtual bool makeSafeForNet(const ClientGuid&) { return false; }
 
     protected:
         InputEventMsg(uint16_t type) : Message(type), m_event() { }

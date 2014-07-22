@@ -18,6 +18,7 @@
 #ifndef _MOUL_MESSAGE_H
 #define _MOUL_MESSAGE_H
 
+#include "ClientGuid.h"
 #include "creatable.h"
 #include "Key.h"
 #include <vector>
@@ -57,7 +58,7 @@ namespace MOUL
         virtual void read(DS::Stream* stream);
         virtual void write(DS::Stream* stream) const;
 
-        virtual bool makeSafeForNet() { return true; }
+        virtual bool makeSafeForNet(const ClientGuid&) { return true; }
 
     protected:
         Message(uint16_t type)

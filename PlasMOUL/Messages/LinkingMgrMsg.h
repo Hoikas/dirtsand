@@ -31,7 +31,7 @@ namespace MOUL
         virtual void read(DS::Stream* stream);
         virtual void write(DS::Stream* stream) const;
 
-        virtual bool makeSafeForNet() { return false; }
+        virtual bool makeSafeForNet(const ClientGuid&) { return false; }
 
     public:
         uint8_t m_cmd;

@@ -34,3 +34,8 @@ void MOUL::IgnorePlayerMsg::write(DS::Stream* stream) const
     stream->write(m_ignoreePlayerId);
     stream->write(m_flags);
 }
+
+bool MOUL::IgnorePlayerMsg::makeSafeForNet(const MOUL::ClientGuid& client)
+{
+    return m_ignorerPlayerId == client.m_PlayerId;
+}

@@ -29,6 +29,8 @@ namespace MOUL
         virtual void read(DS::Stream* stream);
         virtual void write(DS::Stream* stream) const;
 
+        virtual bool makeSafeForNet(const ClientGuid& client);
+
     public:
         uint32_t m_ignorerPlayerId;
         uint32_t m_ignoreePlayerId;

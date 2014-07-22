@@ -36,7 +36,7 @@ void MOUL::LinkToAgeMsg::write(DS::Stream* s) const
     s->writeSafeString(m_linkInAnim);
 }
 
-bool MOUL::LinkToAgeMsg::makeSafeForNet()
+bool MOUL::LinkToAgeMsg::makeSafeForNet(const ClientGuid& client)
 {
     // The only time this msg should ever come over the wire is
     // as a field inside an AvBrainCoop's CoopCoordinator. So, if we get

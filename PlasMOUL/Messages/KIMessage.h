@@ -70,7 +70,7 @@ namespace MOUL
         virtual void read(DS::Stream* stream);
         virtual void write(DS::Stream* stream) const;
 
-        virtual bool makeSafeForNet();
+        virtual bool makeSafeForNet(const ClientGuid& client);
 
     protected:
         KIMessage(uint16_t type)
