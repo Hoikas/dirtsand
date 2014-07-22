@@ -45,6 +45,7 @@
 #include "Messages/LinkingMgrMsg.h"
 #include "Messages/ClimbMsg.h"
 #include "Messages/BackdoorMsg.h"
+#include "Messages/IgnorePlayerMsg.h"
 #include "NetMessages/NetMsgLoadClone.h"
 #include "NetMessages/NetMsgPlayerPage.h"
 #include "NetMessages/NetMsgMembersList.h"
