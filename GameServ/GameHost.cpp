@@ -341,6 +341,50 @@ void dm_game_join(GameHost_Private* host, Game_ClientMessage* msg)
 
 void dm_send_state(GameHost_Private* host, GameClient_Private* client)
 {
+    // Load non-avatar clones (ie NPC quabs)
+    for (auto clone_iter = host->m_clones.begin(); clone_iter != host->m_clones.end(); ++clone_iter) {
+        DM_WRITEMSG(host, clone_iter->second);
+        DS::CryptSendBuffer(client->m_sock, client->m_crypt,
+                            host->m_buffer.buffer(), host->m_buffer.size());
+    }
+
+    // Load clones for players already in the age
+    MOUL::NetMsgLoadClone* cloneMsg = MOUL::NetMsgLoadClone::Create();
+    cloneMsg->m_contentFlags = MOUL::NetMessage::e_HasTimeSent
+                             | MOUL::NetMessage::e_NeedsReliableSend;
+    cloneMsg->m_timestamp.setNow();
+    cloneMsg->m_isPlayer = true;
+    cloneMsg->m_isLoading = true;
+    cloneMsg->m_isInitialState = true;
+
+    MOUL::LoadAvatarMsg* avatarMsg = MOUL::LoadAvatarMsg::Create();
+    avatarMsg->m_bcastFlags = MOUL::Message::e_NetPropagate
+                            | MOUL::Message::e_LocalPropagate;
+    avatarMsg->m_receivers.push_back(MOUL::Key::NetClientMgrKey);
+    avatarMsg->m_requestorKey = MOUL::Key::AvatarMgrKey;
+    avatarMsg->m_userData = 0;
+    avatarMsg->m_validMsg = true;
+    avatarMsg->m_isLoading = true;
+    avatarMsg->m_isPlayer = true;
+    cloneMsg->m_message = avatarMsg;
+
+    {
+        std::lock_guard<std::mutex> clientGuard(host->m_clientMutex);
+        for (auto client_iter = host->m_clients.begin(); client_iter != host->m_clients.end(); ++client_iter) {
+            if (client_iter->second->m_clientInfo.m_PlayerId != client->m_clientInfo.m_PlayerId
+                && !client->m_clientKey.isNull()) {
+                avatarMsg->m_cloneKey = client_iter->second->m_clientKey;
+                avatarMsg->m_originPlayerId = client_iter->second->m_clientInfo.m_PlayerId;
+                cloneMsg->m_object = client_iter->second->m_clientKey;
+
+                DM_WRITEMSG(host, cloneMsg);
+                DS::CryptSendBuffer(client->m_sock, client->m_crypt,
+                                    host->m_buffer.buffer(), host->m_buffer.size());
+            }
+        }
+    }
+    cloneMsg->unref();
+
     check_postgres(host);
 
     MOUL::NetMsgSDLState* state = MOUL::NetMsgSDLState::Create();
@@ -560,7 +604,7 @@ void dm_send_members(GameHost_Private* host, GameClient_Private* client)
     members->m_members.reserve(host->m_clients.size() - 1);
     for (auto client_iter = host->m_clients.begin(); client_iter != host->m_clients.end(); ++client_iter) {
         if (client_iter->second->m_clientInfo.m_PlayerId != client->m_clientInfo.m_PlayerId
-            && !client->m_clientKey.isNull()) {
+            && !client_iter->second->m_clientKey.isNull()) {
             MOUL::NetMsgMemberInfo info;
             info.m_client = client_iter->second->m_clientInfo;
             info.m_avatarKey = client_iter->second->m_clientKey;
@@ -573,49 +617,6 @@ void dm_send_members(GameHost_Private* host, GameClient_Private* client)
     DS::CryptSendBuffer(client->m_sock, client->m_crypt,
                         host->m_buffer.buffer(), host->m_buffer.size());
     members->unref();
-
-    // Load non-avatar clones (ie NPC quabs)
-    for (auto clone_iter = host->m_clones.begin(); clone_iter != host->m_clones.end(); ++clone_iter) {
-        DM_WRITEMSG(host, clone_iter->second);
-        DS::CryptSendBuffer(client->m_sock, client->m_crypt,
-                            host->m_buffer.buffer(), host->m_buffer.size());
-    }
-
-    // Load clones for players already in the age
-    MOUL::NetMsgLoadClone* cloneMsg = MOUL::NetMsgLoadClone::Create();
-    cloneMsg->m_contentFlags = MOUL::NetMessage::e_HasTimeSent
-                             | MOUL::NetMessage::e_NeedsReliableSend;
-    cloneMsg->m_timestamp.setNow();
-    cloneMsg->m_isPlayer = true;
-    cloneMsg->m_isLoading = true;
-    cloneMsg->m_isInitialState = true;
-
-    MOUL::LoadAvatarMsg* avatarMsg = MOUL::LoadAvatarMsg::Create();
-    avatarMsg->m_bcastFlags = MOUL::Message::e_NetPropagate
-                            | MOUL::Message::e_LocalPropagate;
-    avatarMsg->m_receivers.push_back(MOUL::Key::NetClientMgrKey);
-    avatarMsg->m_requestorKey = MOUL::Key::AvatarMgrKey;
-    avatarMsg->m_userData = 0;
-    avatarMsg->m_validMsg = true;
-    avatarMsg->m_isLoading = true;
-    avatarMsg->m_isPlayer = true;
-    cloneMsg->m_message = avatarMsg;
-
-    {
-        std::lock_guard<std::mutex> clientGuard(host->m_clientMutex);
-        for (auto client_iter = host->m_clients.begin(); client_iter != host->m_clients.end(); ++client_iter) {
-            if (client_iter->second->m_clientInfo.m_PlayerId != client->m_clientInfo.m_PlayerId
-                && !client->m_clientKey.isNull()) {
-                avatarMsg->m_cloneKey = client_iter->second->m_clientKey;
-                avatarMsg->m_originPlayerId = client_iter->second->m_clientInfo.m_PlayerId;
-
-                DM_WRITEMSG(host, cloneMsg);
-                DS::CryptSendBuffer(client->m_sock, client->m_crypt,
-                                    host->m_buffer.buffer(), host->m_buffer.size());
-            }
-        }
-    }
-    cloneMsg->unref();
 }
 
 void dm_load_clone(GameHost_Private* host, GameClient_Private* client,
