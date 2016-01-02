@@ -263,9 +263,12 @@ void wk_gameWorker(DS::SocketHandle sockp)
     }
 
     if (client.m_host) {
-        client.m_host->m_clientMutex.lock();
-        client.m_host->m_clients.erase(client.m_clientInfo.m_PlayerId);
-        client.m_host->m_clientMutex.unlock();
+        {
+            std::lock_guard<std::mutex> _guard(client.m_host->m_clientMutex);
+            auto it = client.m_host->m_clients.find(client.m_clientInfo.m_PlayerId);
+            if (it != client.m_host->m_clients.end())
+                client.m_host->m_clients.erase(it);
+        }
         Game_ClientMessage msg;
         msg.m_client = &client;
         client.m_host->m_channel.putMessage(e_GameDisconnect, reinterpret_cast<void*>(&msg));
