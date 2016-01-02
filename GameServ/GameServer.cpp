@@ -103,10 +103,7 @@ void cb_join(GameClient_Private& client)
 
     // Trans ID
     client.m_buffer.write<uint32_t>(DS::CryptRecvValue<uint32_t>(client.m_sock, client.m_crypt));
-
     uint32_t mcpId = DS::CryptRecvValue<uint32_t>(client.m_sock, client.m_crypt);
-    client.m_host = find_game_host(mcpId);
-    DS_PASSERT(client.m_host != 0);
 
     Game_ClientMessage msg;
     msg.m_client = &client;
@@ -133,6 +130,9 @@ void cb_join(GameClient_Private& client)
     }
     msg.m_client->m_clientInfo.set_PlayerName(nodeInfo.m_node.m_IString64_1);
     msg.m_client->m_clientInfo.set_CCRLevel(0);
+
+    client.m_host = find_game_host(mcpId);
+    DS_PASSERT(client.m_host != 0);
     client.m_host->m_channel.putMessage(e_GameJoinAge, reinterpret_cast<void*>(&msg));
 
     reply = client.m_channel.getMessage();
