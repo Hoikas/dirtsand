@@ -23,57 +23,17 @@
 #include <map>
 #include <thread>
 #include <mutex>
+#include <memory>
 #include <chrono>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
-
-struct FileRequest
-{
-    int m_fd;
-    off_t m_size;
-    off_t m_pos;
-
-    typedef std::tuple<bool, off_t> chunk_t;
-
-    FileRequest(int fd) : m_fd(fd), m_pos()
-    {
-        struct stat stat_buf;
-        if (fstat(m_fd, &stat_buf) < 0)
-            m_size = 0;
-        else
-            m_size = stat_buf.st_size;
-    }
-
-    ~FileRequest()
-    {
-        close(m_fd);
-    }
-
-    chunk_t nextChunk()
-    {
-        off_t left = m_size - m_pos;
-        if (left > CHUNK_SIZE) {
-            return std::make_tuple(false, CHUNK_SIZE);
-        } else {
-            return std::make_tuple(true, left);
-        }
-    }
-};
 
 struct FileServer_Private
 {
     DS::SocketHandle m_sock;
     DS::BufferStream m_buffer;
     uint32_t m_readerId;
-
-    typedef std::map<uint32_t, FileRequest> downloadmap_t;
-    downloadmap_t m_downloads;
-
-    ~FileServer_Private()
-    {
-        m_downloads.clear();
-    }
 };
 
 static std::list<FileServer_Private*> s_clients;
@@ -207,27 +167,6 @@ void cb_manifestAck(FileServer_Private& client)
     DS::RecvValue<uint32_t>(client.m_sock);     // Reader ID
 }
 
-void send_downloadChunk(FileServer_Private& client, uint32_t transId, FileServer_Private::downloadmap_t::iterator& download)
-{
-    if (download == client.m_downloads.end())
-        return;
-
-    auto [lastChunk, chunkSize] = download->second.nextChunk();
-
-    START_REPLY(e_FileToCli_FileDownloadReply);
-    client.m_buffer.write<uint32_t>(transId);
-    client.m_buffer.write<uint32_t>(DS::e_NetSuccess);
-    client.m_buffer.write<uint32_t>(download->first);              // Reader ID
-    client.m_buffer.write<uint32_t>(download->second.m_size);     // File size
-    client.m_buffer.write<uint32_t>(chunkSize);                    // Data packet size
-    SEND_FD_REPLY(download->second.m_fd, download->second.m_pos, chunkSize);
-
-    if (lastChunk) {
-        client.m_downloads.erase(download);
-        download = client.m_downloads.end();
-    }
-}
-
 void cb_downloadStart(FileServer_Private& client)
 {
     // Trans ID
@@ -277,14 +216,44 @@ void cb_downloadStart(FileServer_Private& client)
         return;
     }
 
-    // Cheap "optimization" for file downloads... Users with high RTTs (eg 100+ms) report their
-    // download speeds max out in the hundreds of KiB/s. So, we always make sure that one more chunk
-    // is available for receiving than has been acked.
-    auto [reqIt, inserted] = client.m_downloads.try_emplace(++client.m_readerId, fd);
-    // HACK: temp send the whole stupid file in one request...
-    do {
-        send_downloadChunk(client, transId, reqIt);
-    } while (reqIt != client.m_downloads.end());
+    struct stat stat_buf;
+    off_t filepos = 0;
+    if (fstat(fd, &stat_buf) < 0) {
+        fprintf(stderr, "[File] Could not stat file %s\n[File] Requested by %s\n",
+                filename.c_str(), DS::SockIpAddress(client.m_sock).c_str());
+        START_REPLY(e_FileToCli_FileDownloadReply);
+        client.m_buffer.write<uint32_t>(transId);
+        client.m_buffer.write<uint32_t>(DS::e_NetFileNotFound);
+        client.m_buffer.write<uint32_t>(0);     // Reader ID
+        client.m_buffer.write<uint32_t>(0);     // File size
+        client.m_buffer.write<uint32_t>(0);     // Data packet size
+        SEND_REPLY();
+
+        close(fd);
+        return;
+    }
+
+    // Attempting to use the MOUL protocol's "acking" of file chunks has a severe performance
+    // penalty. For me, I see an improvement from 950 KiB/s to 14 MiB/s by simply sending the
+    // whole file synchronously. We still have to chunk it, though, so the client's progress
+    // bar updates correctly. Besides, this is TCP, who needs acks at this level? The drawback
+    // to this is that the connection becomes unresponsive to all other traffic when a download
+    // is in progress.
+    while (filepos < stat_buf.st_size) {
+        off_t remsz = stat_buf.st_size - filepos;
+        uint32_t chunksz = remsz > CHUNK_SIZE ? CHUNK_SIZE : (uint32_t)remsz;
+
+        START_REPLY(e_FileToCli_FileDownloadReply);
+        client.m_buffer.write<uint32_t>(transId);
+        client.m_buffer.write<uint32_t>(DS::e_NetSuccess);
+        client.m_buffer.write<uint32_t>(client.m_readerId);     // Reader ID
+        client.m_buffer.write<uint32_t>(stat_buf.st_size);      // File size
+        client.m_buffer.write<uint32_t>(chunksz);               // Data packet size
+        SEND_FD_REPLY(fd, filepos, chunksz);
+    }
+
+    ++client.m_readerId;
+    close(fd);
 }
 
 void cb_downloadNext(FileServer_Private& client)
