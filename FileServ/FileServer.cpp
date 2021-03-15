@@ -281,17 +281,17 @@ void cb_downloadStart(FileServer_Private& client)
     // download speeds max out in the hundreds of KiB/s. So, we always make sure that one more chunk
     // is available for receiving than has been acked.
     auto [reqIt, inserted] = client.m_downloads.try_emplace(++client.m_readerId, fd);
-    send_downloadChunk(client, transId, reqIt);
-    send_downloadChunk(client, transId, reqIt);
+    // HACK: temp send the whole stupid file in one request...
+    do {
+        send_downloadChunk(client, transId, reqIt);
+    } while (reqIt != client.m_downloads.end());
 }
 
 void cb_downloadNext(FileServer_Private& client)
 {
-    uint32_t transId = DS::RecvValue<uint32_t>(client.m_sock);
-    uint32_t readerId = DS::RecvValue<uint32_t>(client.m_sock);
-
-    auto download = client.m_downloads.find(readerId);
-    send_downloadChunk(client, transId, download);
+    /* This is TCP, nobody cares about this ack... */
+    DS::RecvValue<uint32_t>(client.m_sock);     // TransID
+    DS::RecvValue<uint32_t>(client.m_sock);     // Reader ID
 }
 
 void wk_fileServ(DS::SocketHandle sockp)
