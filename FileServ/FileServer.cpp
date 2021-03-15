@@ -24,7 +24,6 @@
 #include <thread>
 #include <mutex>
 #include <chrono>
-#include <memory>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -68,7 +67,8 @@ struct FileServer_Private
     DS::BufferStream m_buffer;
     uint32_t m_readerId;
 
-    std::map<uint32_t, std::unique_ptr<FileRequest>> m_downloads;
+    typedef std::map<uint32_t, FileRequest> downloadmap_t;
+    downloadmap_t m_downloads;
 
     ~FileServer_Private()
     {
@@ -207,12 +207,31 @@ void cb_manifestAck(FileServer_Private& client)
     DS::RecvValue<uint32_t>(client.m_sock);     // Reader ID
 }
 
+void send_downloadChunk(FileServer_Private& client, uint32_t transId, FileServer_Private::downloadmap_t::iterator& download)
+{
+    if (download == client.m_downloads.end())
+        return;
+
+    auto [lastChunk, chunkSize] = download->second.nextChunk();
+
+    START_REPLY(e_FileToCli_FileDownloadReply);
+    client.m_buffer.write<uint32_t>(transId);
+    client.m_buffer.write<uint32_t>(DS::e_NetSuccess);
+    client.m_buffer.write<uint32_t>(download->first);              // Reader ID
+    client.m_buffer.write<uint32_t>(download->second.m_size);     // File size
+    client.m_buffer.write<uint32_t>(chunkSize);                    // Data packet size
+    SEND_FD_REPLY(download->second.m_fd, download->second.m_pos, chunkSize);
+
+    if (lastChunk) {
+        client.m_downloads.erase(download);
+        download = client.m_downloads.end();
+    }
+}
+
 void cb_downloadStart(FileServer_Private& client)
 {
-    START_REPLY(e_FileToCli_FileDownloadReply);
-
     // Trans ID
-    client.m_buffer.write<uint32_t>(DS::RecvValue<uint32_t>(client.m_sock));
+    uint32_t transId = DS::RecvValue<uint32_t>(client.m_sock);
 
     // Download filename
     char16_t buffer[260];
@@ -231,6 +250,8 @@ void cb_downloadStart(FileServer_Private& client)
 
     // Ensure filename is jailed to our data path
     if (filename.find("..") != -1) {
+        START_REPLY(e_FileToCli_FileDownloadReply);
+        client.m_buffer.write<uint32_t>(transId);
         client.m_buffer.write<uint32_t>(DS::e_NetFileNotFound);
         client.m_buffer.write<uint32_t>(0);     // Reader ID
         client.m_buffer.write<uint32_t>(0);     // File size
@@ -246,6 +267,8 @@ void cb_downloadStart(FileServer_Private& client)
     if (fd < 0) {
         fprintf(stderr, "[File] Could not open file %s\n[File] Requested by %s\n",
                 filename.c_str(), DS::SockIpAddress(client.m_sock).c_str());
+        START_REPLY(e_FileToCli_FileDownloadReply);
+        client.m_buffer.write<uint32_t>(transId);
         client.m_buffer.write<uint32_t>(DS::e_NetFileNotFound);
         client.m_buffer.write<uint32_t>(0);     // Reader ID
         client.m_buffer.write<uint32_t>(0);     // File size
@@ -254,42 +277,21 @@ void cb_downloadStart(FileServer_Private& client)
         return;
     }
 
-    std::unique_ptr<FileRequest> req(new FileRequest(fd));
-    client.m_buffer.write<uint32_t>(DS::e_NetSuccess);
-    client.m_buffer.write<uint32_t>(++client.m_readerId);
-    client.m_buffer.write<uint32_t>(req->m_size);
-
-    FileRequest::chunk_t c = req->nextChunk();
-    client.m_buffer.write<uint32_t>(std::get<1>(c));
-    SEND_FD_REPLY(req->m_fd, req->m_pos, std::get<1>(c));
-    if (!std::get<0>(c)) {
-        client.m_downloads[client.m_readerId] = std::move(req);
-    }
+    // Cheap "optimization" for file downloads... Users with high RTTs (eg 100+ms) report their
+    // download speeds max out in the hundreds of KiB/s. So, we always make sure that one more chunk
+    // is available for receiving than has been acked.
+    auto [reqIt, inserted] = client.m_downloads.try_emplace(++client.m_readerId, fd);
+    send_downloadChunk(client, transId, reqIt);
+    send_downloadChunk(client, transId, reqIt);
 }
 
 void cb_downloadNext(FileServer_Private& client)
 {
-    START_REPLY(e_FileToCli_FileDownloadReply);
-
     uint32_t transId = DS::RecvValue<uint32_t>(client.m_sock);
     uint32_t readerId = DS::RecvValue<uint32_t>(client.m_sock);
-    auto fi = client.m_downloads.find(readerId);
-    if (fi == client.m_downloads.end()) {
-        // The last chunk was already sent, we don't care anymore
-        return;
-    }
 
-    client.m_buffer.write<uint32_t>(transId);
-    client.m_buffer.write<uint32_t>(DS::e_NetSuccess);
-    client.m_buffer.write<uint32_t>(fi->first);
-    client.m_buffer.write<uint32_t>(fi->second->m_size);
-
-    FileRequest::chunk_t c = fi->second->nextChunk();
-    client.m_buffer.write<uint32_t>(std::get<1>(c));
-    SEND_FD_REPLY(fi->second->m_fd, fi->second->m_pos, std::get<1>(c));
-    if (std::get<0>(c)) {
-        client.m_downloads.erase(fi);
-    }
+    auto download = client.m_downloads.find(readerId);
+    send_downloadChunk(client, transId, download);
 }
 
 void wk_fileServ(DS::SocketHandle sockp)
